@@ -1,6 +1,8 @@
 package com;
 
 
+import com.alibaba.fastjson.JSON;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -8,19 +10,20 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Function;
 
 import static com.PaxosHelper.*;
 
-public class Acceptor implements Runnable {
+public class Acceptor extends Thread {
 
     int port;
 
     public Acceptor(int port) {
         this.port = port;
     }
-    Queue<Msg> receiveQueue = new LinkedBlockingQueue();
+    BlockingQueue<Msg> receiveQueue = new LinkedBlockingQueue();
 
     int maxId = 0;
     int choseId = 0;
@@ -32,7 +35,12 @@ public class Acceptor implements Runnable {
         new Thread(() -> receive(port)).start();
 
         while (true) {
-            var msg = receiveQueue.poll();
+            Msg msg = null;
+            try {
+                msg = receiveQueue.take();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             if (msg instanceof PrepareMsg prepareMsg) {
                 int id = prepareMsg.id;
 
@@ -46,24 +54,24 @@ public class Acceptor implements Runnable {
                 writePrepareResp(socket, id, 1, choseId, choseValue);
             } else if (msg instanceof AcceptMsg acceptMsg) {
                 int id = acceptMsg.id;
-                if (maxId > id) {
-                    // 已经接收到了其他
+                if (maxId <= id) {
+                    // 没有接收到了更新的 prepare
+                    choseValue = acceptMsg.value;
+                    System.out.println("Acceptor接收到accept" + choseValue);
                 }
             }
         }
-
     }
 
     private void writePrepareResp(Socket socket, int id, int resp, int choseId, String choseValue) {
         try {
             OutputStream outputStream = socket.getOutputStream();
-            outputStream.write(id);
-            byte[] bytes = choseValue.getBytes(StandardCharsets.UTF_8);
-            outputStream.write(4 + 4 + bytes.length);
-            outputStream.write(resp);
-            outputStream.write(choseId);
-            outputStream.write(bytes);
+            outputStream.write(0x2);
+            PrepareResponse prepareResponse = new PrepareResponse(id, resp, choseId, choseValue);
+            prepareResponse.type = 0x2;
+            outputStream.write(JSON.toJSONBytes(prepareResponse));
             outputStream.flush();
+            outputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -71,27 +79,22 @@ public class Acceptor implements Runnable {
 
     public void receive(int port) {
         try {
+            System.out.println("acceptor-"+port+"开始接受消息");
             ServerSocket serverSocket = new ServerSocket(port);
             while (true) {
                 Socket socket = serverSocket.accept();
                 InputStream inputStream = socket.getInputStream();
-                byte[] type = new byte[4];
-                byte[] len = new byte[4];
-                byte[] seq = new byte[4];
-                inputStream.read(type);
-                inputStream.read(len);
-                inputStream.read(seq);
-                String remoteHost = socket.getInetAddress().getHostAddress();
-                int remotePort = socket.getPort();
-                Msg msg;
-                if (toInt(type) == 1) {
-                    msg = new PrepareMsg(toInt(seq), remoteHost, remotePort);
-                } else {
-                    byte[] value = new byte[toInt(len) - 4];
-                    inputStream.read(value);
-                    msg = new AcceptMsg(toInt(seq), new String(value), remoteHost, remotePort);
+                byte[] bytes = inputStream.readAllBytes();
+
+                Msg msg = null;
+                if (bytes[0] == 0x1) {
+                    msg = JSON.<PrepareMsg>parseObject(Arrays.copyOfRange(bytes, 1, bytes.length), PrepareMsg.class);
+                } else if (bytes[0] == 0x3) {
+                    msg = JSON.<AcceptMsg>parseObject(Arrays.copyOfRange(bytes, 1, bytes.length), AcceptMsg.class);
                 }
+                System.out.println("acceptor-"+port+"接收到消息：" + JSON.toJSONString(msg));
                 receiveQueue.offer(msg);
+                inputStream.close();
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -105,6 +108,7 @@ public class Acceptor implements Runnable {
         try {
             return new Socket(net.addr, net.port);
         } catch (IOException e) {
+            System.out.println(net.addr + "," + net.port);
             e.printStackTrace();
             return null;
         }
@@ -116,7 +120,12 @@ public class Acceptor implements Runnable {
     }
 
     private static int toInt(byte[] bytes) {
-        return Integer.parseInt(new String(bytes));
+        int value;
+        value = (int) ((bytes[0]&0xFF)
+                | ((bytes[1]<<8) & 0xFF00)
+                | ((bytes[2]<<16)& 0xFF0000)
+                | ((bytes[3]<<24) & 0xFF000000));
+        return value;
     }
 }
 
