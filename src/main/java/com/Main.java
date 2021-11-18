@@ -2,6 +2,7 @@ package com;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 public class Main {
@@ -31,12 +32,13 @@ public class Main {
 
     public static void main(String[] args) throws InterruptedException {
         Main main = new Main();
-        main.mockCluster(1, 1);
+        main.mockCluster(3, 5);
 
         for (Acceptor acceptor : main.acceptors) {
             acceptor.start();
         }
         Thread.sleep(100);
+        System.out.println("<=======================================================>");
         for (Proposer proposer : main.proposers) {
             proposer.start();
         }

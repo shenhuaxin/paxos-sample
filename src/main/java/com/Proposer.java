@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 import static com.PaxosHelper.*;
@@ -21,52 +23,80 @@ public class Proposer extends Thread {
     List<Net> acceptors = new ArrayList<>();
 
     int port;
+
     public Proposer(List<Net> acceptors, int port) {
         this.acceptors = acceptors;
         this.port = port;
     }
 
+    int phase;
     @Override
     public void run() {
         new Thread(() -> receive(port)).start();
 
         while (true) {
+            // 每轮投票前， 模拟一个停顿。
+            random_pause();
+            phase = IdCreator.getId(port);
             // 进行一轮prepare消息的发送
-            int id = IdCreator.getId();
             // 发送prepare消息
+            Collections.shuffle(acceptors);
             for (Net net : acceptors) {
-                sendPrepare(id, net);
+                random_pause();
+                sendPrepare(phase, net);
             }
             // prepare消息发送完毕之后，等待 prepare_response
             int respCount = 0;
             String choseValue = null;
+            int choseId = 0;
             while (true) {
                 PrepareResponse resp = null;
                 try {
-                    resp = receiveQueue.take();
+                    resp = receiveQueue.poll(2, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                System.out.println("proposer-" + port + ": " + "接收到prepare resp: " + JSON.toJSONString(resp));
-                if (resp.resp == 1) {
+                if (resp != null && resp.resp == 1) {
                     if (resp.choseValue == null) {
                         // res
                     } else {
                         // prepare response , 代表已经有了 choseValue
-                        choseValue = resp.choseValue;
+                        if (choseValue == null || choseId < resp.choseId) {
+                            choseValue = resp.choseValue;
+                            choseId = resp.choseId;
+                        }
                     }
+                    printPrepareResp(resp);
                     respCount++;
                 }
-                if (respCount > (acceptors.size() / 2)) {
-                    // 超过一半的 acceptor 进行了响应， 对所有 acceptor 发送 accept
-                    for (Net net : acceptors) {
-                        choseValue = choseValue == null ? UUID.randomUUID().toString().substring(0, 6) : choseValue;
-                        sendAccept(id, choseValue, net);
+                if (resp == null) {
+                    if (respCount > (acceptors.size() / 2)) {
+                        choseValue = choseValue == null ? UUID.randomUUID().toString() : choseValue;
+                        System.out.println("[proposer-" + port + "]" + "phase -> "+ phase + ": 得到了多数派的同意，proposal = " + choseValue);
+                        // 超过一半的 acceptor 进行了响应， 对所有 acceptor 发送 accept
+                        for (Net net : acceptors) {
+                            sendAccept(phase, choseValue, net);
+                        }
+                        break;
                     }
-                    break;
                 }
             }
 
+        }
+    }
+
+    private void printPrepareResp(PrepareResponse resp) {
+        System.out.println("[acceptor-" + resp.port +  "] -> " + "[proposer-" + port + "]" + ": prepare_resp phase,"
+                + " promise ->" + resp.prepareId
+                + ", resp -> " + (resp.resp == 1 ? "ok" : "reject")
+                + ", "  + resp.choseValue);
+    }
+
+    private void random_pause() {
+        try {
+            Thread.sleep(ThreadLocalRandom.current().nextInt(2000, 3000));
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
@@ -108,18 +138,13 @@ public class Proposer extends Thread {
         if (socket != null) {
             try {
                 OutputStream outputStream = socket.getOutputStream();
-//                outputStream.write(1);  // 消息类型
-//                outputStream.write(4);  // 字节长度
-//                outputStream.write(seq);
-//                outputStream.flush();
                 PrepareMsg prepareMsg = new PrepareMsg(seq, "127.0.0.1", port);
                 prepareMsg.type = 1;
-
                 outputStream.write(0x1);
                 outputStream.write(JSON.toJSONBytes(prepareMsg));
                 outputStream.flush();
                 outputStream.close();
-                System.out.println("proposer-" + port + ": " + "向acceptor-" + acceptorAddr.port + "发送prepare消息：" + seq);
+                System.out.println("prepare : [proposer-" + port + "] -> [acceptor-" + acceptorAddr.port + "] " + "phase -> "+ phase);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -146,8 +171,6 @@ public class Proposer extends Thread {
             e.printStackTrace();
         }
     }
-
-
 
 
     private Socket getSocket(Net acceptorAddr) {

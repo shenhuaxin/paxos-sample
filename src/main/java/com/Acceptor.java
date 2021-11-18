@@ -8,10 +8,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 
 import static com.PaxosHelper.*;
@@ -23,6 +26,7 @@ public class Acceptor extends Thread {
     public Acceptor(int port) {
         this.port = port;
     }
+
     BlockingQueue<Msg> receiveQueue = new LinkedBlockingQueue();
 
     int maxId = 0;
@@ -38,6 +42,13 @@ public class Acceptor extends Thread {
             Msg msg = null;
             try {
                 msg = receiveQueue.take();
+                // 模拟处理消息的停顿。
+                int millis = ThreadLocalRandom.current().nextInt(2000, 3000);
+                if (millis > 2900) {
+                    // 模拟消息的丢失
+                    continue;
+                }
+                Thread.sleep(millis);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -51,13 +62,17 @@ public class Acceptor extends Thread {
                 }
                 // 只要新的 prepare id 比之前的prepare id 大， 那么就需要返回 promise ,
                 // 但是promise 中有没有已经被选中的值，是另外一回事。
+                maxId = id;
                 writePrepareResp(socket, id, 1, choseId, choseValue);
             } else if (msg instanceof AcceptMsg acceptMsg) {
                 int id = acceptMsg.id;
-                if (maxId <= id) {
+                if (id < maxId) {
+                    System.out.println("[Acceptor-" + port + "]  ignoreValue: " + acceptMsg.getValue());
+                } else {
+                    // todo
                     // 没有接收到了更新的 prepare
                     choseValue = acceptMsg.value;
-                    System.out.println("Acceptor接收到accept" + choseValue);
+                    System.out.println("[Acceptor-" + port + "]" + "phase -> " + acceptMsg.id + "choseValue: " + choseValue);
                 }
             }
         }
@@ -67,7 +82,7 @@ public class Acceptor extends Thread {
         try {
             OutputStream outputStream = socket.getOutputStream();
             outputStream.write(0x2);
-            PrepareResponse prepareResponse = new PrepareResponse(id, resp, choseId, choseValue);
+            PrepareResponse prepareResponse = new PrepareResponse(id, resp, choseId, choseValue, port);
             prepareResponse.type = 0x2;
             outputStream.write(JSON.toJSONBytes(prepareResponse));
             outputStream.flush();
@@ -79,7 +94,7 @@ public class Acceptor extends Thread {
 
     public void receive(int port) {
         try {
-            System.out.println("acceptor-"+port+"开始接受消息");
+            System.out.println("acceptor-" + port + "开始接受消息");
             ServerSocket serverSocket = new ServerSocket(port);
             while (true) {
                 Socket socket = serverSocket.accept();
@@ -92,7 +107,6 @@ public class Acceptor extends Thread {
                 } else if (bytes[0] == 0x3) {
                     msg = JSON.<AcceptMsg>parseObject(Arrays.copyOfRange(bytes, 1, bytes.length), AcceptMsg.class);
                 }
-                System.out.println("acceptor-"+port+"接收到消息：" + JSON.toJSONString(msg));
                 receiveQueue.offer(msg);
                 inputStream.close();
             }
@@ -113,6 +127,7 @@ public class Acceptor extends Thread {
             return null;
         }
     };
+
     private Socket getSocket(Net acceptorAddr) {
         Socket socket = Optional.ofNullable(socketMap.get(acceptorAddr))
                 .orElseGet(() -> socketSupplier.apply(acceptorAddr));
@@ -121,10 +136,10 @@ public class Acceptor extends Thread {
 
     private static int toInt(byte[] bytes) {
         int value;
-        value = (int) ((bytes[0]&0xFF)
-                | ((bytes[1]<<8) & 0xFF00)
-                | ((bytes[2]<<16)& 0xFF0000)
-                | ((bytes[3]<<24) & 0xFF000000));
+        value = (int) ((bytes[0] & 0xFF)
+                | ((bytes[1] << 8) & 0xFF00)
+                | ((bytes[2] << 16) & 0xFF0000)
+                | ((bytes[3] << 24) & 0xFF000000));
         return value;
     }
 }

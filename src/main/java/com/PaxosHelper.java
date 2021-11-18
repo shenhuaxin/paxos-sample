@@ -147,11 +147,14 @@ public class PaxosHelper {
         int choseId;
         String choseValue;
 
-        public PrepareResponse(int prepareId, int resp, int choseId, String choseValue) {
+        int port;
+
+        public PrepareResponse(int prepareId, int resp, int choseId, String choseValue, int port) {
             this.prepareId = prepareId;
             this.resp = resp;
             this.choseId = choseId;
             this.choseValue = choseValue;
+            this.port = port;
         }
 
         public int getPrepareId() {
@@ -185,13 +188,23 @@ public class PaxosHelper {
         public void setChoseValue(String choseValue) {
             this.choseValue = choseValue;
         }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
     }
 
     static class IdCreator {
         static final AtomicInteger ATOMIC_INTEGER = new AtomicInteger(0);
 
-        public static int getId() {
-            return ATOMIC_INTEGER.incrementAndGet();
+        public static int getId(int port) {
+            int i = ATOMIC_INTEGER.incrementAndGet();
+            System.out.println("[proposer-" + port + "] 获取Id -> " + i);
+            return i;
         }
     }
 }
