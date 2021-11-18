@@ -72,7 +72,7 @@ public class Acceptor extends Thread {
                     // todo
                     // 没有接收到了更新的 prepare
                     choseValue = acceptMsg.value;
-                    System.out.println("[Acceptor-" + port + "]" + "phase -> " + acceptMsg.id + "choseValue: " + choseValue);
+                    System.out.println("[Acceptor-" + port + "]" + "phase -> " + acceptMsg.id + ", choseValue: " + choseValue);
                 }
             }
         }
