@@ -1,4 +1,4 @@
-package com;
+package main.java.com;
 
 import com.alibaba.fastjson.JSON;
 
@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
-import static com.PaxosHelper.*;
+import static main.java.com.PaxosHelper.*;
 
 
 public class Proposer extends Thread {

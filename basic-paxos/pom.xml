@@ -3,18 +3,25 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com</groupId>
-    <artifactId>paxos-sample</artifactId>
+    <parent>
+        <artifactId>paxos-sample</artifactId>
+        <groupId>com</groupId>
+        <version>1.0.0</version>
+    </parent>
+    <artifactId>basic-paxos</artifactId>
     <version>1.0.0</version>
-    <packaging>pom</packaging>
+    <packaging>jar</packaging>
+
     <properties>
         <maven.compiler.target>17</maven.compiler.target>
         <maven.compiler.source>17</maven.compiler.source>
     </properties>
 
-
-    <modules>
-        <module>basic-paxos</module>
-        <module>zab-election-demo</module>
-    </modules>
+    <dependencies>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>1.2.70</version>
+        </dependency>
+    </dependencies>
 </project>

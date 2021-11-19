@@ -1,4 +1,4 @@
-package com;
+package main.java.com;
 
 
 import com.alibaba.fastjson.JSON;
@@ -17,7 +17,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 
-import static com.PaxosHelper.*;
+import static main.java.com.PaxosHelper.*;
 
 public class Acceptor extends Thread {
 
